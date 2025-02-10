@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 byteorder = "1.5"
+texpresso = "2"
+image = "0.25"
