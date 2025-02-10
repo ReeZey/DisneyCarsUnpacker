@@ -115,7 +115,11 @@ pub fn repack_all(input_path: &PathBuf, output_path: &PathBuf) {
 
         println!("Repacking files from {:?}", unpacked_pak.path());
 
+        //I LOVE SORTING
         let files = WalkDir::new(&unpacked_pak.path())
+            .sort_by(|a, b| {
+                a.file_name().to_ascii_lowercase().cmp(&b.file_name().to_ascii_lowercase())
+            })
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| e.path().is_file())
