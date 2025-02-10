@@ -6,5 +6,7 @@ const PATH: &str = "input";
 const VERBOSE: bool = false;
 
 fn main() {
-    handler::extract_all(&PathBuf::from(PATH));
+    //handler::extract_all(&PathBuf::from(PATH));
+
+    handler::repack_all(&PathBuf::from("output"), &PathBuf::from("repacked"));
 }

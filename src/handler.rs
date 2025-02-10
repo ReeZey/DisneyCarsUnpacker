@@ -5,12 +5,14 @@ use std::{
     path::PathBuf,
 };
 
-use byteorder::{LittleEndian, ReadBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use walkdir::WalkDir;
 
 use crate::VERBOSE;
 
 const BOX_SIZE: usize = 108;
 
+#[derive(Debug)]
 pub struct FileEntry {
     file_name: PathBuf,
     offset: u32,
@@ -81,12 +83,7 @@ pub fn extract_files(files: Vec<FileEntry>, file_path: &PathBuf) {
             .seek(SeekFrom::Start(file.offset as u64))
             .unwrap();
         let mut buffer = vec![0; file.size as usize];
-
-        if file.size == 0 {
-            file_handle.read_to_end(&mut buffer).unwrap();
-        } else {
-            file_handle.read_exact(&mut buffer).unwrap();
-        }
+        file_handle.read_exact(&mut buffer).unwrap();
 
         if VERBOSE {
             println!("Writing File: {:?}", file.file_name);
@@ -94,6 +91,7 @@ pub fn extract_files(files: Vec<FileEntry>, file_path: &PathBuf) {
 
         let mut file_handle = File::create(&file.file_name).unwrap();
 
+        /*
         if let Some(ext) = file.file_name.extension() {
             if ext == "dxt" {
                 let success = convert_image(&mut buffer, file.file_name.clone());
@@ -103,10 +101,89 @@ pub fn extract_files(files: Vec<FileEntry>, file_path: &PathBuf) {
                 }
             }
         }
+        */
 
         file_handle.write_all(&buffer).unwrap();
     }
 }
+
+pub fn repack_all(input_path: &PathBuf, output_path: &PathBuf) {
+    for unpacked_pak in fs::read_dir(input_path).unwrap().filter_map(|f| f.ok()) {
+        if !unpacked_pak.path().is_dir() {
+            continue;
+        }
+
+        println!("Repacking files from {:?}", unpacked_pak.path());
+
+        let files = WalkDir::new(&unpacked_pak.path())
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_file())
+            .collect::<Vec<_>>();
+
+        let mut file_entries: Vec<FileEntry> = Vec::with_capacity(files.len());
+
+        let mut offset = 0;
+        let mut data = Vec::new();
+        for file in files {
+            let path = file.path();
+
+            //im sorry
+            let mut formatted_path = path
+                .to_str().unwrap()
+                .split_once(unpacked_pak.path().file_name().unwrap().to_str().unwrap())
+                .unwrap().1
+                .to_string();
+            formatted_path.remove(0);
+            formatted_path.push('\0');
+
+            if VERBOSE {
+                println!("Packing file: {}", formatted_path);
+            }
+
+            let size = file.metadata().unwrap().len() as u32;
+
+            file_entries.push(FileEntry {
+                file_name: PathBuf::from(formatted_path),
+                offset,
+                size,
+            });
+
+            let mut file = File::open(path).unwrap();
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer).unwrap();
+
+            data.extend(buffer);
+            offset += size;
+        }
+
+        println!("Packed {:#?} files", file_entries.len());
+
+        let output_file =
+            output_path.join(unpacked_pak.file_name().into_string().unwrap() + ".pak");
+        fs::create_dir_all(output_file.parent().unwrap()).unwrap();
+
+        let mut output_file = File::create(output_file).unwrap();
+
+        output_file
+            .write_u32::<LittleEndian>(file_entries.len() as u32)
+            .unwrap();
+        for file in file_entries {
+            let file_name = file.file_name.to_str().unwrap();
+            let offset = file.offset;
+            let size = file.size;
+
+            let mut buffer = file_name.as_bytes().to_vec();
+            buffer.resize(100, 0xCC);
+            buffer.extend_from_slice(&offset.to_le_bytes());
+            buffer.extend_from_slice(&size.to_le_bytes());
+
+            output_file.write_all(&buffer).unwrap();
+        }
+        output_file.write_all(&data).unwrap();
+    }
+}
+
 
 fn convert_image(buffer: &mut Vec<u8>, file_name: PathBuf) -> bool {
     let mut file = Cursor::new(buffer);
@@ -116,15 +193,21 @@ fn convert_image(buffer: &mut Vec<u8>, file_name: PathBuf) -> bool {
 
     let mut skip = false;
     match flags {
-        38 => {},
-        54 => {},
-        50 => {},
+        38 => {}
+        54 => {}
+        50 => {}
         unsupported => {
-            println!("Unsupported DXT format: {}. {}", unsupported, file_name.to_string_lossy());
+            println!(
+                "Unsupported DXT format: {}. {}",
+                unsupported,
+                file_name.to_string_lossy()
+            );
             skip = true
-        } 
+        }
     }
-    if skip { return false }
+    if skip {
+        return false;
+    }
 
     //println!("Converting DXT image: {:?}", file_name);
 
@@ -137,18 +220,38 @@ fn convert_image(buffer: &mut Vec<u8>, file_name: PathBuf) -> bool {
     let size = file.read_u32::<LittleEndian>().unwrap();
 
     if width != _unknown5 || height != _unknown6 {
+        println!(
+            "Invalid DXT image: {}. {}",
+            file_name.to_string_lossy(),
+            size
+        );
         return false;
     }
-    
+
     let mut input = vec![0; size as usize];
     file.read_exact(&mut input).unwrap();
 
     let mut output = vec![0; (width * height * 4) as usize];
 
     match flags {
-        38 => texpresso::Format::Bc1.decompress(&mut input, width as usize, height as usize, &mut output),
-        54 => texpresso::Format::Bc3.decompress(&mut input, width as usize, height as usize, &mut output),
-        50 => texpresso::Format::Bc3.decompress(&mut input, width as usize, height as usize, &mut output),
+        38 => texpresso::Format::Bc1.decompress(
+            &mut input,
+            width as usize,
+            height as usize,
+            &mut output,
+        ),
+        54 => texpresso::Format::Bc3.decompress(
+            &mut input,
+            width as usize,
+            height as usize,
+            &mut output,
+        ),
+        50 => texpresso::Format::Bc3.decompress(
+            &mut input,
+            width as usize,
+            height as usize,
+            &mut output,
+        ),
         _ => {
             return false;
         }
@@ -165,7 +268,9 @@ fn convert_image(buffer: &mut Vec<u8>, file_name: PathBuf) -> bool {
         *pixel = image::Rgba([r, g, b, a]);
     });
 
-    image.save(format!("{}.png", file_name.to_string_lossy())).unwrap();
+    image
+        .save(format!("{}.png", file_name.to_string_lossy()))
+        .unwrap();
 
-    return true;
+    return false;
 }
