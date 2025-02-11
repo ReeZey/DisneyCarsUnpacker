@@ -1,8 +1,5 @@
 use std::{
-    ffi::CStr,
-    fs::{self, File},
-    io::{Cursor, Read, Seek, SeekFrom, Write},
-    path::PathBuf,
+    cmp::Ordering, ffi::CStr, fs::{self, DirEntry, File}, io::{Cursor, Read, Seek, SeekFrom, Write}, path::PathBuf
 };
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -118,7 +115,23 @@ pub fn repack_all(input_path: &PathBuf, output_path: &PathBuf) {
         //I LOVE SORTING
         let files = WalkDir::new(&unpacked_pak.path())
             .sort_by(|a, b| {
-                a.file_name().to_ascii_lowercase().cmp(&b.file_name().to_ascii_lowercase())
+                let aa = a.file_name().to_string_lossy().to_lowercase();
+                let bb = b.file_name().to_string_lossy().to_lowercase();
+
+                let a_is_dir = a.path().is_dir();
+                let b_is_dir = b.path().is_dir();
+
+                let check = natord::compare(&aa, &bb);
+
+                if check == Ordering::Equal {
+                    return match (a_is_dir, b_is_dir) {
+                        (true, false) => std::cmp::Ordering::Greater,
+                        (false, true) => std::cmp::Ordering::Less,
+                        _ => aa.cmp(&bb),
+                    };
+                }
+
+                check
             })
             .into_iter()
             .filter_map(|e| e.ok())
@@ -187,6 +200,27 @@ pub fn repack_all(input_path: &PathBuf, output_path: &PathBuf) {
         output_file.write_all(&data).unwrap();
     }
 }
+
+/*
+fn walkboi(path: PathBuf) -> Vec<DirEntry> {
+    let mut files = Vec::new();
+
+    let mut folders = vec![path];
+    while folders.len() > 0 {
+        let folder = folders.pop().unwrap();
+
+        for entry in fs::read_dir(folder).unwrap().filter_map(|f| f.ok()) {
+            if entry.path().is_dir() {
+                folders.push(entry.path());
+            } else {
+                files.push(entry);
+            }
+        }
+    }
+
+    files
+}
+*/
 
 
 fn convert_image(buffer: &mut Vec<u8>, file_name: PathBuf) -> bool {
