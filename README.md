@@ -1,4 +1,4 @@
-# Disney Cars 2005 Video Game Decompiler
+# Disney Cars (2006) Video Game Decompiler
 
 # what this
 - Decompiles `.pak` files.
