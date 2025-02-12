@@ -1,5 +1,5 @@
 use std::{
-    cmp::Ordering, ffi::CStr, fs::{self, DirEntry, File}, io::{Cursor, Read, Seek, SeekFrom, Write}, path::PathBuf
+    cmp::Ordering, ffi::CStr, fs::{self, File}, io::{Cursor, Read, Seek, SeekFrom, Write}, path::PathBuf
 };
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -115,19 +115,40 @@ pub fn repack_all(input_path: &PathBuf, output_path: &PathBuf) {
         //I LOVE SORTING
         let files = WalkDir::new(&unpacked_pak.path())
             .sort_by(|a, b| {
-                let aa = a.file_name().to_string_lossy().to_lowercase();
-                let bb = b.file_name().to_string_lossy().to_lowercase();
+                let mut aa = a.file_name().to_string_lossy().to_lowercase();
+                let mut bb = b.file_name().to_string_lossy().to_lowercase();
+
+                if a.path().is_file() && aa.contains(".") {
+                    aa = aa.split_once(".").unwrap().0.to_string();
+                }
+
+                if b.path().is_file() && bb.contains(".") {
+                    bb = bb.split_once(".").unwrap().0.to_string();
+                }
+
+                if a.path().is_file() && aa.contains(" ") {
+                    aa = aa.split_once(" ").unwrap().0.to_string();
+                }
+
+                if b.path().is_file() && bb.contains(" ") {
+                    bb = bb.split_once(" ").unwrap().0.to_string();
+                }
 
                 let a_is_dir = a.path().is_dir();
                 let b_is_dir = b.path().is_dir();
 
-                let check = natord::compare(&aa, &bb);
+                let check = aa.cmp(&bb);
 
                 if check == Ordering::Equal {
                     return match (a_is_dir, b_is_dir) {
-                        (true, false) => std::cmp::Ordering::Greater,
-                        (false, true) => std::cmp::Ordering::Less,
-                        _ => aa.cmp(&bb),
+                        (true, false) => Ordering::Greater,
+                        (false, true) => Ordering::Less,
+                        _ => {
+                            let aaa = a.file_name().to_string_lossy().to_lowercase();
+                            let bbb = b.file_name().to_string_lossy().to_lowercase();
+
+                            alphanumeric_sort::compare_str(&aaa, &bbb)
+                        },
                     };
                 }
 
@@ -139,6 +160,17 @@ pub fn repack_all(input_path: &PathBuf, output_path: &PathBuf) {
             .collect::<Vec<_>>();
 
         let mut file_entries: Vec<FileEntry> = Vec::with_capacity(files.len());
+
+        /*
+        // debug sorting
+
+        fs::write(
+            PathBuf::from("temp").join(unpacked_pak.path().file_name().unwrap()).with_extension("txt"),
+            files.iter().map(|f| f.path().to_str().unwrap().to_string() + "\n").collect::<String>(),
+        ).unwrap();
+
+        continue;
+        */
 
         let mut offset = 0;
         let mut data = Vec::new();
@@ -176,11 +208,11 @@ pub fn repack_all(input_path: &PathBuf, output_path: &PathBuf) {
 
         println!("Packed {:#?} files", file_entries.len());
 
-        let output_file =
+        let output_file_path =
             output_path.join(unpacked_pak.file_name().into_string().unwrap() + ".pak");
-        fs::create_dir_all(output_file.parent().unwrap()).unwrap();
+        fs::create_dir_all(output_file_path.parent().unwrap()).unwrap();
 
-        let mut output_file = File::create(output_file).unwrap();
+        let mut output_file = File::create(&output_file_path).unwrap();
 
         output_file
             .write_u32::<LittleEndian>(file_entries.len() as u32)
@@ -198,6 +230,13 @@ pub fn repack_all(input_path: &PathBuf, output_path: &PathBuf) {
             output_file.write_all(&buffer).unwrap();
         }
         output_file.write_all(&data).unwrap();
+
+        let sha = sha256::try_digest(output_file_path).unwrap();
+        let sha_correct = sha256::try_digest(PathBuf::from("input").join(unpacked_pak.file_name().into_string().unwrap() + ".pak")).unwrap();
+
+        if sha != sha_correct {
+            println!("SHA256 mismatch");
+        }
     }
 }
 
