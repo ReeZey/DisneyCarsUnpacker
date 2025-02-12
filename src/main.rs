@@ -1,12 +1,22 @@
-mod handler;
-use std::path::PathBuf;
+mod repack;
+mod utils;
+mod unpack;
 
 //const PATH: &str = "C:\\SteamLibrary\\steamapps\\common\\Cars\\Data";
-const PATH: &str = "input";
+const INPUT_PATH: &str = "input";
+const UNPACKED_PATH: &str = "unpacked";
+const REPACKED_PATH: &str = "repacked";
+
 const VERBOSE: bool = false;
 
 fn main() {
-    //handler::extract_all(&PathBuf::from(PATH));
+    println!("Unpacking files...\n");
 
-    handler::repack_all(&PathBuf::from("output"), &PathBuf::from("repacked"));
+    unpack::all();
+
+    println!("\ndone with unpacking, continuing with packing");
+
+    repack::all();
+
+    println!("\ndone with repacking");
 }
