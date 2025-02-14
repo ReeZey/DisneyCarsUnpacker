@@ -1,8 +1,8 @@
-use std::{cmp::Ordering, io::{Cursor, Read}, path::PathBuf};
+use std::{cmp::Ordering, fs::{self}, io::{Cursor, Error, ErrorKind, Read}, path::PathBuf};
 use byteorder::{LittleEndian, ReadBytesExt};
 use walkdir::DirEntry;
 
-use crate::VERBOSE;
+use crate::{riff::Riff, VERBOSE};
 
 #[derive(Debug)]
 pub struct FileEntry {
@@ -109,6 +109,82 @@ pub fn convert_image(buffer: &mut Vec<u8>, file_name: PathBuf) -> bool {
     }
 
     return false;
+}
+
+pub fn convert_adpcm_to_wav(buffer: &mut Vec<u8>, file_name: PathBuf) -> Result<(), Error> {
+    let mut riff = Riff::new(&buffer);
+    let mut file = Cursor::new(buffer);
+
+    if riff.format != 0x2 {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("Unsupported format: {:X}", riff.format),
+        ));
+    }
+    riff.format = 1;
+
+    
+    if VERBOSE {
+        println!("Converting ADPCM audio: {:?}", file_name);
+        println!("{:?}", riff);
+    }
+
+    let mut data = vec![];
+    file.read_to_end(&mut data).unwrap();
+
+    let mut output = vec![];
+
+    let mut low_adpcm_state = audio_codec_algorithms::AdpcmImaState::new();
+    let mut top_adpcm_state = audio_codec_algorithms::AdpcmImaState::new();
+
+
+    for chunk in data {
+        let low = audio_codec_algorithms::decode_adpcm_ima(chunk & 0x0F, &mut low_adpcm_state);
+        output.push(low);
+
+        if riff.channels == 2 {
+            let top = audio_codec_algorithms::decode_adpcm_ima(chunk >> 4, &mut top_adpcm_state);
+            output.push(top);
+        }
+    }
+
+    let data = output.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>();
+
+    fs::write(&file_name, riff.as_bytes(data)).unwrap();
+
+    return Ok(());
+}
+
+pub fn convert_wav_to_adpcm(buffer: &mut Vec<u8>) -> Result<Vec<u8>, Error> {
+    let mut riff = Riff::new(buffer);
+    let mut file = Cursor::new(buffer);
+
+    if riff.format != 0x1 {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("Unsupported format: {:X}", riff.format),
+        ));
+    }
+    riff.format = 2;
+
+    let mut data = vec![];
+    let mut low_out_state = audio_codec_algorithms::AdpcmImaState::new();
+    let mut top_out_state = audio_codec_algorithms::AdpcmImaState::new();
+    
+    loop {
+        match file.read_i16::<LittleEndian>() {
+            Ok(wav) => {
+                let mut byte = audio_codec_algorithms::encode_adpcm_ima(wav, &mut low_out_state) & 0x0F;
+                if riff.channels == 2 {
+                    byte |= audio_codec_algorithms::encode_adpcm_ima(wav, &mut top_out_state) << 4;
+                }
+                data.push(byte);
+            },
+            Err(_) => break,
+        }
+    }
+
+    return Ok(riff.as_bytes(data));
 }
 
 pub fn windows_sort(a: &DirEntry, b: &DirEntry) -> Ordering {

@@ -1,6 +1,6 @@
 use std::{ffi::CStr, fs::{self, File}, io::{Read, Seek, SeekFrom, Write}, path::PathBuf};
 
-use crate::{utils::FileEntry, INPUT_PATH, UNPACKED_PATH, VERBOSE};
+use crate::{utils::{self, FileEntry}, INPUT_PATH, UNPACKED_PATH, VERBOSE};
 use byteorder::{LittleEndian, ReadBytesExt};
 
 const BOX_SIZE: usize = 108;
@@ -77,18 +77,26 @@ pub fn extract_boxes(files: Vec<FileEntry>, file_path: &PathBuf) {
 
         let mut file_handle = File::create(&file.file_name).unwrap();
 
-        /*
         if let Some(ext) = file.file_name.extension() {
-            if ext == "dxt" {
-                let success = utils::convert_image(&mut buffer, file.file_name.clone());
-
-                if success {
-                    continue;
+            match ext.to_str().unwrap() {
+                /*
+                "dxt" => {
+                    let success = crate::utils::convert_image(&mut buffer, file.file_name.clone());
+                    
+                    if success {
+                        continue;
+                    }
                 }
+                */
+                "wav" => {
+                    if utils::convert_adpcm_to_wav(&mut buffer, file.file_name.clone()).is_ok() {
+                        continue;
+                    }
+                }
+                _ => {}
             }
         }
-        */
 
         file_handle.write_all(&buffer).unwrap();
     }
-}
+} 

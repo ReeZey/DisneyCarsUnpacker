@@ -1,6 +1,7 @@
 mod repack;
 mod utils;
 mod unpack;
+mod riff;
 
 //const PATH: &str = "C:\\SteamLibrary\\steamapps\\common\\Cars\\Data";
 const INPUT_PATH: &str = "input";
@@ -14,7 +15,7 @@ fn main() {
 
     unpack::all();
 
-    println!("\ndone with unpacking, continuing with packing");
+    println!("\ndone with unpacking, continuing with packing\n");
 
     repack::all();
 

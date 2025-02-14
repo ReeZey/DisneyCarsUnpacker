@@ -70,6 +70,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "audio-codec-algorithms"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33f15622964e2d1f08cec8eb6fc6df40dd987c47be617ba010de330d5d837c98"
+
+[[package]]
 name = "autocfg"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -181,6 +187,7 @@ name = "cars-decomp"
 version = "0.1.0"
 dependencies = [
  "alphanumeric-sort",
+ "audio-codec-algorithms",
  "byteorder",
  "image",
  "sha256",

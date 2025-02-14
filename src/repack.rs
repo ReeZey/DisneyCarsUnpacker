@@ -43,17 +43,25 @@ pub fn all() {
                 println!("Packing file: {}", formatted_path);
             }
 
-            let size = file.metadata().unwrap().len() as u32;
+            let mut file = File::open(path).unwrap();
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer).unwrap();
+
+            if let Some(ext) = path.extension() {
+                if ext == "wav" {
+                    if let Ok(new_buffer) = utils::convert_wav_to_adpcm(&mut buffer) {
+                        buffer = new_buffer;
+                    }
+                }
+            }
+
+            let size = buffer.len() as u32;
 
             file_entries.push(FileEntry {
                 file_name: PathBuf::from(formatted_path),
                 offset,
                 size,
             });
-
-            let mut file = File::open(path).unwrap();
-            let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer).unwrap();
 
             data.extend(buffer);
             offset += size;
@@ -88,8 +96,7 @@ pub fn all() {
         let sha_correct = sha256::try_digest(
             PathBuf::from(INPUT_PATH)
                 .join(unpacked_pak.file_name().into_string().unwrap() + ".pak"),
-        )
-        .unwrap();
+        ).unwrap();
 
         if sha != sha_correct {
             println!("SHA256 mismatch");
