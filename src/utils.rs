@@ -1,5 +1,10 @@
-use std::{cmp::Ordering, fs::{self}, io::{Cursor, Error, ErrorKind, Read}, path::PathBuf};
 use byteorder::{LittleEndian, ReadBytesExt};
+use std::{
+    cmp::Ordering,
+    fs::{self},
+    io::{Cursor, Error, ErrorKind, Read},
+    path::PathBuf,
+};
 use walkdir::DirEntry;
 
 use crate::{riff::Riff, VERBOSE};
@@ -31,7 +36,7 @@ pub fn convert_image(buffer: &mut Vec<u8>, file_name: PathBuf) -> bool {
                     file_name.to_string_lossy()
                 );
             }
-           
+
             skip = true
         }
     }
@@ -123,7 +128,6 @@ pub fn convert_adpcm_to_wav(buffer: &mut Vec<u8>, file_name: PathBuf) -> Result<
     }
     riff.format = 1;
 
-    
     if VERBOSE {
         println!("Converting ADPCM audio: {:?}", file_name);
         println!("{:?}", riff);
@@ -137,18 +141,24 @@ pub fn convert_adpcm_to_wav(buffer: &mut Vec<u8>, file_name: PathBuf) -> Result<
     let mut low_adpcm_state = audio_codec_algorithms::AdpcmImaState::new();
     let mut top_adpcm_state = audio_codec_algorithms::AdpcmImaState::new();
 
-
     for chunk in data {
         let low = audio_codec_algorithms::decode_adpcm_ima(chunk & 0x0F, &mut low_adpcm_state);
         output.push(low);
 
-        if riff.channels == 2 {
-            let top = audio_codec_algorithms::decode_adpcm_ima(chunk >> 4, &mut top_adpcm_state);
-            output.push(top);
-        }
+        let top_state = match riff.channels {
+            1 => &mut low_adpcm_state,
+            2 => &mut top_adpcm_state,
+            _ => panic!("Unsupported channel count: {}", riff.channels),
+        };
+
+        let top = audio_codec_algorithms::decode_adpcm_ima(chunk >> 4, top_state);
+        output.push(top);
     }
 
-    let data = output.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>();
+    let data = output
+        .iter()
+        .flat_map(|x| x.to_le_bytes())
+        .collect::<Vec<u8>>();
 
     fs::write(&file_name, riff.as_bytes(data)).unwrap();
 
@@ -168,18 +178,33 @@ pub fn convert_wav_to_adpcm(buffer: &mut Vec<u8>) -> Result<Vec<u8>, Error> {
     riff.format = 2;
 
     let mut data = vec![];
-    let mut low_out_state = audio_codec_algorithms::AdpcmImaState::new();
-    let mut top_out_state = audio_codec_algorithms::AdpcmImaState::new();
-    
+    let mut low_adpcm_state = audio_codec_algorithms::AdpcmImaState::new();
+    let mut top_adpcm_state = audio_codec_algorithms::AdpcmImaState::new();
+
+    let mut byte = 0;
+    let mut index = 0;
+
     loop {
         match file.read_i16::<LittleEndian>() {
             Ok(wav) => {
-                let mut byte = audio_codec_algorithms::encode_adpcm_ima(wav, &mut low_out_state) & 0x0F;
-                if riff.channels == 2 {
-                    byte |= audio_codec_algorithms::encode_adpcm_ima(wav, &mut top_out_state) << 4;
+                if index == 4 {
+                    let top_state = match riff.channels {
+                        1 => &mut low_adpcm_state,
+                        2 => &mut top_adpcm_state,
+                        _ => panic!("Unsupported channel count: {}", riff.channels),
+                    };
+
+                    byte |= audio_codec_algorithms::encode_adpcm_ima(wav, top_state) << 4;
+                } else {
+                    byte = audio_codec_algorithms::encode_adpcm_ima(wav, &mut low_adpcm_state);
                 }
-                data.push(byte);
-            },
+
+                index += 4;
+                if index == 8 {
+                    data.push(byte);
+                    index = 0;
+                }
+            }
             Err(_) => break,
         }
     }
@@ -221,7 +246,7 @@ pub fn windows_sort(a: &DirEntry, b: &DirEntry) -> Ordering {
                 b_filename = b.file_name().to_string_lossy().to_lowercase();
 
                 alphanumeric_sort::compare_str(&a_filename, &b_filename)
-            },
+            }
         };
     }
 
