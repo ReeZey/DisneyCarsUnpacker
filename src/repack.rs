@@ -49,7 +49,7 @@ pub fn all() {
 
             if let Some(ext) = path.extension() {
                 if ext == "wav" {
-                    if let Ok(new_buffer) = utils::convert_wav_to_adpcm(&mut buffer) {
+                    if let Ok(new_buffer) = utils::convert_wav_to_adpcm(buffer.clone()) {
                         buffer = new_buffer;
                     }
                 }

@@ -1,4 +1,4 @@
-use std::io::Cursor;
+use std::io::{Cursor, Seek};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
@@ -37,16 +37,16 @@ impl Riff {
         bytes
     }
 
-    pub fn new(buffer: &Vec<u8>) -> Self {
-        let mut cursor = Cursor::new(buffer);
-        cursor.set_position(16);
-        let chunk_size = cursor.read_u32::<LittleEndian>().unwrap();
-        let format = cursor.read_u16::<LittleEndian>().unwrap();
-        let channels = cursor.read_u16::<LittleEndian>().unwrap();
-        let sample_rate = cursor.read_u32::<LittleEndian>().unwrap();
-        let byte_rate = cursor.read_u32::<LittleEndian>().unwrap();
-        let block_align = cursor.read_u16::<LittleEndian>().unwrap();
-        let bits_per_sample = cursor.read_u16::<LittleEndian>().unwrap();
+    pub fn new(buffer: &mut Cursor<Vec<u8>>) -> Self {
+        buffer.set_position(16);
+        let chunk_size = buffer.read_u32::<LittleEndian>().unwrap();
+        let format = buffer.read_u16::<LittleEndian>().unwrap();
+        let channels = buffer.read_u16::<LittleEndian>().unwrap();
+        let sample_rate = buffer.read_u32::<LittleEndian>().unwrap();
+        let byte_rate = buffer.read_u32::<LittleEndian>().unwrap();
+        let block_align = buffer.read_u16::<LittleEndian>().unwrap();
+        let bits_per_sample = buffer.read_u16::<LittleEndian>().unwrap();
+        buffer.seek_relative(12).unwrap();
         
         Self {
             chunk_size,

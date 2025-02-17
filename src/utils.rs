@@ -116,9 +116,9 @@ pub fn convert_image(buffer: &mut Vec<u8>, file_name: PathBuf) -> bool {
     return false;
 }
 
-pub fn convert_adpcm_to_wav(buffer: &mut Vec<u8>, file_name: PathBuf) -> Result<(), Error> {
-    let mut riff = Riff::new(&buffer);
+pub fn convert_adpcm_to_wav(buffer: Vec<u8>, file_name: PathBuf) -> Result<(), Error> {
     let mut file = Cursor::new(buffer);
+    let mut riff = Riff::new(&mut file);
 
     if riff.format != 0x2 {
         return Err(Error::new(
@@ -142,7 +142,7 @@ pub fn convert_adpcm_to_wav(buffer: &mut Vec<u8>, file_name: PathBuf) -> Result<
     let mut top_adpcm_state = audio_codec_algorithms::AdpcmImaState::new();
 
     for chunk in data {
-        let low = audio_codec_algorithms::decode_adpcm_ima(chunk & 0x0F, &mut low_adpcm_state);
+        let low = audio_codec_algorithms::decode_adpcm_ima(chunk >> 4, &mut low_adpcm_state);
         output.push(low);
 
         let top_state = match riff.channels {
@@ -151,7 +151,7 @@ pub fn convert_adpcm_to_wav(buffer: &mut Vec<u8>, file_name: PathBuf) -> Result<
             _ => panic!("Unsupported channel count: {}", riff.channels),
         };
 
-        let top = audio_codec_algorithms::decode_adpcm_ima(chunk >> 4, top_state);
+        let top = audio_codec_algorithms::decode_adpcm_ima(chunk & 0x0F, top_state);
         output.push(top);
     }
 
@@ -165,9 +165,9 @@ pub fn convert_adpcm_to_wav(buffer: &mut Vec<u8>, file_name: PathBuf) -> Result<
     return Ok(());
 }
 
-pub fn convert_wav_to_adpcm(buffer: &mut Vec<u8>) -> Result<Vec<u8>, Error> {
-    let mut riff = Riff::new(buffer);
+pub fn convert_wav_to_adpcm(buffer: Vec<u8>) -> Result<Vec<u8>, Error> {
     let mut file = Cursor::new(buffer);
+    let mut riff = Riff::new(&mut file);
 
     if riff.format != 0x1 {
         return Err(Error::new(
@@ -194,9 +194,9 @@ pub fn convert_wav_to_adpcm(buffer: &mut Vec<u8>) -> Result<Vec<u8>, Error> {
                         _ => panic!("Unsupported channel count: {}", riff.channels),
                     };
 
-                    byte |= audio_codec_algorithms::encode_adpcm_ima(wav, top_state) << 4;
+                    byte |= audio_codec_algorithms::encode_adpcm_ima(wav, top_state);
                 } else {
-                    byte = audio_codec_algorithms::encode_adpcm_ima(wav, &mut low_adpcm_state);
+                    byte = audio_codec_algorithms::encode_adpcm_ima(wav, &mut low_adpcm_state) << 4;
                 }
 
                 index += 4;

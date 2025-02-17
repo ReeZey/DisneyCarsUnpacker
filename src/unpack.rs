@@ -89,7 +89,7 @@ pub fn extract_boxes(files: Vec<FileEntry>, file_path: &PathBuf) {
                 }
                 */
                 "wav" => {
-                    if utils::convert_adpcm_to_wav(&mut buffer, file.file_name.clone()).is_ok() {
+                    if utils::convert_adpcm_to_wav(buffer.clone(), file.file_name.clone()).is_ok() {
                         continue;
                     }
                 }
