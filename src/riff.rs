@@ -1,4 +1,4 @@
-use std::io::{Cursor, Seek};
+use std::io::{Cursor, Read, Seek};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
@@ -46,7 +46,13 @@ impl Riff {
         let byte_rate = buffer.read_u32::<LittleEndian>().unwrap();
         let block_align = buffer.read_u16::<LittleEndian>().unwrap();
         let bits_per_sample = buffer.read_u16::<LittleEndian>().unwrap();
-        buffer.seek_relative(12).unwrap();
+
+        let mut test = vec![0; 4];
+        buffer.read_exact(&mut test).unwrap();
+        if test != b"data" {
+            buffer.seek_relative(4).unwrap();
+        }
+        buffer.seek_relative(4).unwrap();
         
         Self {
             chunk_size,
