@@ -6,8 +6,7 @@ use std::{
     path::PathBuf,
 };
 use walkdir::DirEntry;
-
-use crate::{riff::Riff, VERBOSE};
+use crate::riff::Riff;
 
 #[derive(Debug)]
 pub struct FileEntry {
@@ -16,7 +15,7 @@ pub struct FileEntry {
     pub size: u32,
 }
 
-pub fn convert_image(buffer: &mut Vec<u8>, file_path: PathBuf) -> bool {
+pub fn convert_image(buffer: &mut Vec<u8>, file_path: PathBuf, verbose: bool) -> bool {
     let mut file = Cursor::new(buffer);
 
     let _unknown = file.read_u32::<LittleEndian>().unwrap();
@@ -28,7 +27,7 @@ pub fn convert_image(buffer: &mut Vec<u8>, file_path: PathBuf) -> bool {
         54 => {}
         50 => {}
         unsupported => {
-            if VERBOSE {
+            if verbose {
                 println!(
                     "Unsupported DXT format: {}. {}",
                     unsupported,
@@ -105,7 +104,7 @@ pub fn convert_image(buffer: &mut Vec<u8>, file_path: PathBuf) -> bool {
             .save(&file_name)
             .unwrap();
     
-        if VERBOSE {
+        if verbose {
             println!("Converted DXT image: {:?}", file_name);
         }
     }
@@ -113,7 +112,7 @@ pub fn convert_image(buffer: &mut Vec<u8>, file_path: PathBuf) -> bool {
     return false;
 }
 
-pub fn convert_adpcm_to_wav(buffer: Vec<u8>, file_name: PathBuf) -> Result<(), Error> {
+pub fn convert_adpcm_to_wav(buffer: Vec<u8>, file_name: PathBuf, verbose: bool) -> Result<(), Error> {
     let mut file = Cursor::new(buffer);
     let mut riff = Riff::new(&mut file);
 
@@ -125,7 +124,7 @@ pub fn convert_adpcm_to_wav(buffer: Vec<u8>, file_name: PathBuf) -> Result<(), E
     }
     riff.format = 1;
 
-    if VERBOSE {
+    if verbose {
         println!("Converting ADPCM audio: {:?}", file_name);
         println!("{:?}", riff);
     }
@@ -140,8 +139,6 @@ pub fn convert_adpcm_to_wav(buffer: Vec<u8>, file_name: PathBuf) -> Result<(), E
 
     for chunk in data {
         let low = audio_codec_algorithms::decode_adpcm_ima(chunk >> 4, &mut low_adpcm_state);
-        output.push(low);
-
         let top_state = match riff.channels {
             1 => &mut low_adpcm_state,
             2 => &mut top_adpcm_state,
@@ -149,7 +146,9 @@ pub fn convert_adpcm_to_wav(buffer: Vec<u8>, file_name: PathBuf) -> Result<(), E
         };
 
         let top = audio_codec_algorithms::decode_adpcm_ima(chunk & 0x0F, top_state);
+
         output.push(top);
+        output.push(low);
     }
 
     let data = output

@@ -1,12 +1,10 @@
-use crate::{utils::{self, FileEntry}, REPACKED_PATH, UNPACKED_PATH};
+use crate::{utils::{self, FileEntry}, StartArguments};
 use std::{fs::{self, File},io::{Read, Write}, path::PathBuf};
 use byteorder::{LittleEndian, WriteBytesExt};
 use walkdir::WalkDir;
 
-use crate::{INPUT_PATH, VERBOSE};
-
-pub fn all() {
-    for unpacked_pak in fs::read_dir(UNPACKED_PATH).unwrap().filter_map(|f| f.ok()) {
+pub fn all(args: StartArguments) {
+    for unpacked_pak in fs::read_dir(args.unpacked_path).unwrap().filter_map(|f| f.ok()) {
         if !unpacked_pak.path().is_dir() {
             continue;
         }
@@ -37,11 +35,10 @@ pub fn all() {
                 .1
                 .to_string();
             formatted_path.remove(0);
-            formatted_path.push('\0');
-
-            if VERBOSE {
+            if args.verbose {
                 println!("Packing file: {}", formatted_path);
             }
+            formatted_path.push('\0');
 
             let mut file = File::open(path).unwrap();
             let mut buffer = Vec::new();
@@ -69,7 +66,7 @@ pub fn all() {
 
         println!("Packed {:#?} files", file_entries.len());
 
-        let output_file_path = PathBuf::from(REPACKED_PATH).join(unpacked_pak.file_name().into_string().unwrap() + ".pak");
+        let output_file_path = PathBuf::from(&args.repacked_path).join(unpacked_pak.file_name().into_string().unwrap() + ".pak");
         fs::create_dir_all(output_file_path.parent().unwrap()).unwrap();
 
         let mut output_file = File::create(&output_file_path).unwrap();
@@ -94,12 +91,18 @@ pub fn all() {
 
         let sha = sha256::try_digest(output_file_path).unwrap();
         let sha_correct = sha256::try_digest(
-            PathBuf::from(INPUT_PATH)
+            PathBuf::from(&args.input_path)
                 .join(unpacked_pak.file_name().into_string().unwrap() + ".pak"),
-        ).unwrap();
+        );
 
-        if sha != sha_correct {
-            println!("SHA256 mismatch");
+        if let Ok(sha_correct) = sha_correct {
+            if sha != sha_correct {
+                println!("SHA256 mismatch");
+            }
+        } else {
+            println!("Could not calculate SHA256 hash: {}", sha_correct.err().unwrap());
         }
+
+        println!()
     }
 }
