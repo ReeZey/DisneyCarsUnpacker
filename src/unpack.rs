@@ -75,19 +75,13 @@ pub fn extract_boxes(files: Vec<FileEntry>, file_path: &PathBuf) {
             println!("Writing File: {:?}", file.file_name);
         }
 
-        let mut file_handle = File::create(&file.file_name).unwrap();
-
         if let Some(ext) = file.file_name.extension() {
             match ext.to_str().unwrap() {
-                /*
                 "dxt" => {
-                    let success = crate::utils::convert_image(&mut buffer, file.file_name.clone());
-                    
-                    if success {
+                    if crate::utils::convert_image(&mut buffer, file.file_name.clone()) {
                         continue;
                     }
                 }
-                */
                 "wav" => {
                     if utils::convert_adpcm_to_wav(buffer.clone(), file.file_name.clone()).is_ok() {
                         continue;
@@ -97,6 +91,7 @@ pub fn extract_boxes(files: Vec<FileEntry>, file_path: &PathBuf) {
             }
         }
 
+        let mut file_handle = File::create(&file.file_name).unwrap();
         file_handle.write_all(&buffer).unwrap();
     }
 } 

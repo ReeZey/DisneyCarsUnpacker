@@ -16,8 +16,7 @@ pub struct FileEntry {
     pub size: u32,
 }
 
-#[allow(dead_code)]
-pub fn convert_image(buffer: &mut Vec<u8>, file_name: PathBuf) -> bool {
+pub fn convert_image(buffer: &mut Vec<u8>, file_path: PathBuf) -> bool {
     let mut file = Cursor::new(buffer);
 
     let _unknown = file.read_u32::<LittleEndian>().unwrap();
@@ -33,7 +32,7 @@ pub fn convert_image(buffer: &mut Vec<u8>, file_name: PathBuf) -> bool {
                 println!(
                     "Unsupported DXT format: {}. {}",
                     unsupported,
-                    file_name.to_string_lossy()
+                    file_path.to_string_lossy()
                 );
             }
 
@@ -47,70 +46,68 @@ pub fn convert_image(buffer: &mut Vec<u8>, file_name: PathBuf) -> bool {
     //println!("Converting DXT image: {:?}", file_name);
 
     let _unknown3 = file.read_u32::<LittleEndian>().unwrap();
-    let _unknown4 = file.read_u32::<LittleEndian>().unwrap();
-    let width = file.read_u32::<LittleEndian>().unwrap();
-    let height = file.read_u32::<LittleEndian>().unwrap();
-    let _unknown5 = file.read_u32::<LittleEndian>().unwrap();
-    let _unknown6 = file.read_u32::<LittleEndian>().unwrap();
-    let size = file.read_u32::<LittleEndian>().unwrap();
+    let image_count = file.read_u32::<LittleEndian>().unwrap();
+    let _full_width = file.read_u32::<LittleEndian>().unwrap();
+    let _full_height = file.read_u32::<LittleEndian>().unwrap();
 
-    if width != _unknown5 || height != _unknown6 {
+    for _ in 0..image_count {
+        let current_width = file.read_u32::<LittleEndian>().unwrap();
+        let current_height = file.read_u32::<LittleEndian>().unwrap();
+        let size = file.read_u32::<LittleEndian>().unwrap();
+    
+        let mut input = vec![0; size as usize];
+        file.read_exact(&mut input).unwrap();
+    
+        let mut output = vec![0; (current_width * current_height * 4) as usize];
+    
+        match flags {
+            38 => texpresso::Format::Bc1.decompress(
+                &mut input,
+                current_width as usize,
+                current_height as usize,
+                &mut output,
+            ),
+            54 => texpresso::Format::Bc3.decompress(
+                &mut input,
+                current_width as usize,
+                current_height as usize,
+                &mut output,
+            ),
+            50 => texpresso::Format::Bc3.decompress(
+                &mut input,
+                current_width as usize,
+                current_height as usize,
+                &mut output,
+            ),
+            _ => {
+                return false;
+            }
+        }
+    
+        let mut image = image::ImageBuffer::new(current_width, current_height);
+
+        image.enumerate_pixels_mut().for_each(|(x, y, pixel)| {
+            let index = ((y * current_width + x) * 4) as usize;
+            let r = output[index];
+            let g = output[index + 1];
+            let b = output[index + 2];
+            let a = output[index + 3];
+            *pixel = image::Rgba([r, g, b, a]);
+        });
+    
+        let mut name = format!("{}", file_path.file_stem().unwrap().to_string_lossy());
+        if image_count > 1 {
+            name += &format!("-{}", current_width);
+        }
+        let file_name = file_path.with_file_name(name).with_extension("png");
+
+        image
+            .save(&file_name)
+            .unwrap();
+    
         if VERBOSE {
-            println!(
-                "Invalid DXT image: {}. {}",
-                file_name.to_string_lossy(),
-                size
-            );
+            println!("Converted DXT image: {:?}", file_name);
         }
-        return false;
-    }
-
-    let mut input = vec![0; size as usize];
-    file.read_exact(&mut input).unwrap();
-
-    let mut output = vec![0; (width * height * 4) as usize];
-
-    match flags {
-        38 => texpresso::Format::Bc1.decompress(
-            &mut input,
-            width as usize,
-            height as usize,
-            &mut output,
-        ),
-        54 => texpresso::Format::Bc3.decompress(
-            &mut input,
-            width as usize,
-            height as usize,
-            &mut output,
-        ),
-        50 => texpresso::Format::Bc3.decompress(
-            &mut input,
-            width as usize,
-            height as usize,
-            &mut output,
-        ),
-        _ => {
-            return false;
-        }
-    }
-
-    let mut image = image::ImageBuffer::new(width, height);
-
-    image.enumerate_pixels_mut().for_each(|(x, y, pixel)| {
-        let index = ((y * width + x) * 4) as usize;
-        let r = output[index];
-        let g = output[index + 1];
-        let b = output[index + 2];
-        let a = output[index + 3];
-        *pixel = image::Rgba([r, g, b, a]);
-    });
-
-    image
-        .save(format!("{}.png", file_name.to_string_lossy()))
-        .unwrap();
-
-    if VERBOSE {
-        println!("Converted DXT image: {:?}", file_name);
     }
 
     return false;
